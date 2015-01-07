@@ -8,6 +8,7 @@ CHANGELOG
 - [improvement] Add connection heartbeat (JAVA-533)
 - [improvement] Reduce level of logs on missing rpc_address (JAVA-568)
 - [improvement] Add idle timeout to the connection pool (JAVA-419)
+- [bug] Fix race condition between pool expansion and shutdown (JAVA-599)
 
 Merged from 2.0.9_fixes branch:
 
