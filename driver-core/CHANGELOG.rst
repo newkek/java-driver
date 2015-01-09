@@ -4,6 +4,8 @@ CHANGELOG
 2.1.5:
 ------
 
+- [bug] Fix checks on mapped collection types (JAVA-612)
+
 Merged from 2.0 branch:
 
 - [new feature] Add AddressTranslater for EC2 multi-region deployment (JAVA-518)
