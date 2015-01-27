@@ -5,6 +5,7 @@ CHANGELOG
 -------
 
 - [new feature] Add AddressTranslater for EC2 multi-region deployment (JAVA-518)
+- [bug] Fix cluster name mismatch check at startup (JAVA-595)
 
 2.0.9:
 ------
