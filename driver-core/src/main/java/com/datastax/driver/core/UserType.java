@@ -236,12 +236,12 @@ public class UserType extends DataType implements Iterable<UserType.Field>{
             TableMetadata.newLine(sb, formatted);
         }
 
-        return sb.append(')').toString();
+        return sb.append(");").toString();
     }
 
     @Override
     public String toString() {
-        return Metadata.escapeId(getKeyspace()) + '.' + Metadata.escapeId(getTypeName());
+        return "frozen<" + Metadata.escapeId(getKeyspace()) + '.' + Metadata.escapeId(getTypeName()) + ">";
     }
 
     // We don't want to expose that, it's already exposed through DataType.parse
