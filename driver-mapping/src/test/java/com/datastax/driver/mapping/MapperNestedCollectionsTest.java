@@ -9,10 +9,12 @@ import org.testng.annotations.Test;
 
 import com.datastax.driver.core.CCMBridge;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.utils.CassandraVersion;
 import com.datastax.driver.mapping.annotations.*;
 
 import static com.datastax.driver.core.Assertions.assertThat;
 
+@CassandraVersion(major=2.1, minor=3)
 public class MapperNestedCollectionsTest extends CCMBridge.PerClassSingleNodeCluster {
 
     @Override
