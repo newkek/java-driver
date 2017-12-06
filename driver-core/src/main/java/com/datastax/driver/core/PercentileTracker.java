@@ -264,7 +264,7 @@ public abstract class PercentileTracker implements LatencyTracker {
      * @param <B> the type of the concrete builder implementation.
      * @param <T> the type of the object to build.
      */
-    public static abstract class Builder<B, T> {
+    public static abstract class Builder<B extends Builder, T extends PercentileTracker> {
         protected final long highestTrackableLatencyMillis;
         protected int numberOfSignificantValueDigits = 3;
         protected int minRecordedValues = 1000;
