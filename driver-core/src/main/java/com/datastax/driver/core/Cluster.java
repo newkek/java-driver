@@ -380,6 +380,21 @@ public class Cluster implements Closeable {
         return manager.clusterName;
     }
 
+
+    /**
+     * TODO find a better way to expose this
+     */
+    public int inFlight(Host host) {
+        int inFlight = 0;
+        for (SessionManager session : manager.sessions) {
+            HostConnectionPool pool = session.pools.get(host);
+            if (pool != null) {
+                inFlight += pool.totalInFlight.get();
+            }
+        }
+        return inFlight;
+    }
+
     /**
      * Returns read-only metadata on the connected cluster.
      * <p/>
