@@ -628,18 +628,18 @@ class SessionManager extends AbstractSession {
             try {
                 // Preparing is not critical: if it fails, it will fix itself later when the user tries to execute
                 // the prepared query. So don't block if no connection is available, simply abort.
-                final Connection c = entry.getValue().borrowConnection(0, TimeUnit.MILLISECONDS);
+                final Connection c = entry.getValue().borrowConnection(0, TimeUnit.MILLISECONDS, 0);
                 ListenableFuture<Response> future = c.write(new Requests.Prepare(query));
                 Futures.addCallback(future, new FutureCallback<Response>() {
                     @Override
                     public void onSuccess(Response result) {
-                        c.release();
+                        c.release(0);
                     }
 
                     @Override
                     public void onFailure(Throwable t) {
                         logger.debug(String.format("Unexpected error while preparing query (%s) on %s", query, entry.getKey()), t);
-                        c.release();
+                        c.release(0);
                     }
                 });
                 futures.add(future);

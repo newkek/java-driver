@@ -147,6 +147,9 @@ public class SpeculativeExecutionTest {
         long execStartCount = errors.getSpeculativeExecutions().getCount();
 
         ResultSet rs = session.execute("mock query");
+
+
+
         Row row = rs.one();
 
         assertThat(row.getString("result")).isEqualTo("result2");

@@ -55,6 +55,7 @@ class HostConnectionPool implements Connection.Owner {
      * The total number of in-flight requests on all connections of this pool.
      */
     final AtomicInteger totalInFlight = new AtomicInteger();
+    final AtomicInteger totalInFlightNoSpec = new AtomicInteger(0);
     /**
      * The maximum value of {@link #totalInFlight} since the last call to {@link #cleanupIdleConnections(long)}
      */
@@ -196,7 +197,7 @@ class HostConnectionPool implements Connection.Owner {
         return manager.configuration().getPoolingOptions();
     }
 
-    public Connection borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
+    public Connection borrowConnection(long timeout, TimeUnit unit, int executionIndex) throws ConnectionException, TimeoutException {
         Phase phase = this.phase.get();
         if (phase != Phase.READY)
             // Note: throwing a ConnectionException is probably fine in practice as it will trigger the creation of a new host.
@@ -220,6 +221,11 @@ class HostConnectionPool implements Connection.Owner {
                 }
                 Connection c = waitForConnection(timeout, unit);
                 totalInFlight.incrementAndGet();
+
+                if (executionIndex <= 1) {
+                    totalInFlightNoSpec.incrementAndGet();
+                }
+
                 c.setKeyspace(manager.poolsState.keyspace);
                 return c;
             }
@@ -256,8 +262,12 @@ class HostConnectionPool implements Connection.Owner {
                     break;
             }
         }
-
         int totalInFlightCount = totalInFlight.incrementAndGet();
+
+        if (executionIndex <= 1) {
+             totalInFlightNoSpec.incrementAndGet();
+        }
+
         // update max atomically:
         while (true) {
             int oldMax = maxTotalInFlight.get();
@@ -365,9 +375,13 @@ class HostConnectionPool implements Connection.Owner {
         throw new TimeoutException("All connections are busy");
     }
 
-    public void returnConnection(Connection connection) {
+    void returnConnection(Connection connection, int executionIndex) {
         connection.inFlight.decrementAndGet();
         totalInFlight.decrementAndGet();
+
+        if (executionIndex <= 1) {
+            totalInFlightNoSpec.decrementAndGet();
+        }
 
         if (isClosed()) {
             close(connection);

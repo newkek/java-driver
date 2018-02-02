@@ -588,6 +588,30 @@ public class Cluster implements Closeable {
     }
 
     /**
+     * TODO find a better way to expose this
+     */
+    public int inFlightNospec(Host host) {
+        int inFlight = 0;
+        for (SessionManager session : manager.sessions) {
+            HostConnectionPool pool = session.pools.get(host);
+            inFlight += pool.totalInFlightNoSpec.get();
+        }
+        return inFlight;
+    }
+
+    /**
+     * TODO find a better way to expose this
+     */
+    public int inFlight(Host host) {
+        int inFlight = 0;
+        for (SessionManager session : manager.sessions) {
+            HostConnectionPool pool = session.pools.get(host);
+            inFlight += pool.totalInFlight.get();
+        }
+        return inFlight;
+    }
+
+    /**
      * Whether this Cluster instance has been closed.
      * <p/>
      * Note that this method returns true as soon as one of the close methods
