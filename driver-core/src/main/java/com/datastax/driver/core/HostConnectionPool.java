@@ -51,7 +51,7 @@ class HostConnectionPool implements Connection.Owner {
      * The total number of in-flight requests on all connections of this pool.
      */
     final AtomicInteger totalInFlight = new AtomicInteger();
-    final AtomicInteger totalInFlightNoSpec = new AtomicInteger();
+//    final AtomicInteger totalInFlightNoSpec = new AtomicInteger();
     /**
      * The maximum value of {@link #totalInFlight} since the last call to {@link #cleanupIdleConnections(long)}
      */
@@ -253,9 +253,9 @@ class HostConnectionPool implements Connection.Owner {
 
         int totalInFlightCount = totalInFlight.incrementAndGet();
 
-        if (executionIndex <= 1) {
-            totalInFlightNoSpec.incrementAndGet();
-        }
+//        if (executionIndex <= 1) {
+//            totalInFlightNoSpec.incrementAndGet();
+//        }
 
         // update max atomically:
         while (true) {
@@ -309,9 +309,9 @@ class HostConnectionPool implements Connection.Owner {
         connection.inFlight.decrementAndGet();
         totalInFlight.decrementAndGet();
 
-        if (executionIndex <= 1) {
-            totalInFlightNoSpec.decrementAndGet();
-        }
+//        if (executionIndex <= 1) {
+//            totalInFlightNoSpec.decrementAndGet();
+//        }
 
         if (isClosed()) {
             close(connection);

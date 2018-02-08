@@ -437,16 +437,16 @@ public class Cluster implements Closeable {
     /**
      * TODO find a better way to expose this
      */
-    public int inFlightNospec(Host host) {
-        int inFlight = 0;
-        for (SessionManager session : manager.sessions) {
-            HostConnectionPool pool = session.pools.get(host);
-            if (pool != null) {
-                inFlight += pool.totalInFlightNoSpec.get();
-            }
-        }
-        return inFlight;
-    }
+//    public int inFlightNospec(Host host) {
+//        int inFlight = 0;
+//        for (SessionManager session : manager.sessions) {
+//            HostConnectionPool pool = session.pools.get(host);
+//            if (pool != null) {
+//                inFlight += pool.totalInFlightNoSpec.get();
+//            }
+//        }
+//        return inFlight;
+//    }
 
     /**
      * Registers the provided listener to be notified on hosts
