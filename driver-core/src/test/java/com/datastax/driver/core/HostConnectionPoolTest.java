@@ -720,7 +720,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // On returning of the connection, should detect that there are no available streams and trash it.
             assertThat(pool.trash).hasSize(0);
-            pool.returnConnection(extra1);
+            pool.returnConnection(extra1, );
             assertThat(pool.trash).hasSize(1);
         } finally {
             MockRequest.completeAll(allRequests);
@@ -1453,7 +1453,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
             }
             if (state.compareAndSet(State.START, State.COMPLETED)) {
                 connection.dispatcher.removeHandler(responseHandler, true);
-                connection.release();
+                connection.release(0);
             }
         }
 
@@ -1461,7 +1461,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
         public void onException(Connection connection, Exception exception, long latency, int retryCount) {
             if (state.compareAndSet(State.START, State.FAILED)) {
                 connection.dispatcher.removeHandler(responseHandler, true);
-                connection.release();
+                connection.release(0);
             }
         }
 

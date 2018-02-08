@@ -632,7 +632,7 @@ class SessionManager extends AbstractSession {
                 // Preparing is not critical: if it fails, it will fix itself later when the user tries to execute
                 // the prepared query. So don't wait if no connection is available, simply abort.
                 ListenableFuture<Connection> connectionFuture = entry.getValue().borrowConnection(
-                        0, TimeUnit.MILLISECONDS, 0);
+                        0, TimeUnit.MILLISECONDS, 0, 0);
                 ListenableFuture<Response> prepareFuture = GuavaCompatibility.INSTANCE.transformAsync(connectionFuture,
                         new AsyncFunction<Connection, Response>() {
                             @Override
@@ -641,14 +641,14 @@ class SessionManager extends AbstractSession {
                                 Futures.addCallback(responseFuture, new FutureCallback<Response>() {
                                     @Override
                                     public void onSuccess(Response result) {
-                                        c.release();
+                                        c.release(0);
                                     }
 
                                     @Override
                                     public void onFailure(Throwable t) {
                                         logger.debug(String.format("Unexpected error while preparing query (%s) on %s",
                                                 query, entry.getKey()), t);
-                                        c.release();
+                                        c.release(0);
                                     }
                                 });
                                 return responseFuture;

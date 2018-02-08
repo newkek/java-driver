@@ -85,6 +85,7 @@ class Connection {
 
     // Used by connection pooling to count how many requests are "in flight" on that connection.
     final AtomicInteger inFlight = new AtomicInteger(0);
+    final AtomicInteger inFlightSpecExec = new AtomicInteger(0);
 
     private final AtomicInteger writer = new AtomicInteger(0);
 
@@ -658,11 +659,12 @@ class Connection {
     /**
      * If the connection is part of a pool, return it to the pool.
      * The connection should generally not be reused after that.
+     * @param executionIndex
      */
-    void release() {
+    void release(int executionIndex) {
         Owner owner = ownerRef.get();
         if (owner instanceof HostConnectionPool)
-            ((HostConnectionPool) owner).returnConnection(this);
+            ((HostConnectionPool) owner).returnConnection(this, executionIndex);
     }
 
     boolean isClosed() {

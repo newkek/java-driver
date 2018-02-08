@@ -314,12 +314,12 @@ class RequestHandler {
             PoolingOptions poolingOptions = manager.configuration().getPoolingOptions();
             ListenableFuture<Connection> connectionFuture = pool.borrowConnection(
                     poolingOptions.getPoolTimeoutMillis(), TimeUnit.MILLISECONDS,
-                    poolingOptions.getMaxQueueSize());
+                    poolingOptions.getMaxQueueSize(), position);
             Futures.addCallback(connectionFuture, new FutureCallback<Connection>() {
                 @Override
                 public void onSuccess(Connection connection) {
                     if (isDone.get()) {
-                        connection.release();
+                        connection.release(position);
                         return;
                     }
                     if (current != null) {
@@ -335,17 +335,17 @@ class RequestHandler {
                         if (metricsEnabled())
                             metrics().getErrorMetrics().getConnectionErrors().inc();
                         if (connection != null)
-                            connection.release();
+                            connection.release(position);
                         logError(host.getSocketAddress(), e);
                         findNextHostAndQuery();
                     } catch (BusyConnectionException e) {
                         // The pool shouldn't have give us a busy connection unless we've maxed up the pool, so move on to the next host.
-                        connection.release();
+                        connection.release(position);
                         logError(host.getSocketAddress(), e);
                         findNextHostAndQuery();
                     } catch (RuntimeException e) {
                         if (connection != null)
-                            connection.release();
+                            connection.release(position);
                         logger.error("Unexpected error while querying " + host.getAddress(), e);
                         logError(host.getSocketAddress(), e);
                         findNextHostAndQuery();
@@ -375,7 +375,7 @@ class RequestHandler {
             while (true) {
                 QueryState previous = queryStateRef.get();
                 if (previous.isCancelled()) {
-                    connection.release();
+                    connection.release(position);
                     return;
                 }
                 if (previous.inProgress || queryStateRef.compareAndSet(previous, previous.startNext()))
@@ -394,7 +394,7 @@ class RequestHandler {
             // missed the new value of connectionHandler. So make sure that cancelHandler() gets called here (we might call it twice,
             // but it knows how to deal with it).
             if (queryStateRef.get() == QueryState.CANCELLED_WHILE_IN_PROGRESS && connectionHandler.cancelHandler())
-                connection.release();
+                connection.release(position);
         }
 
         private RetryPolicy.RetryDecision computeRetryDecisionOnRequestError(DriverException exception) {
@@ -489,7 +489,7 @@ class RequestHandler {
                     // The connectionHandler should be non-null, but we might miss the update if we're racing with write().
                     // If it's still null, this will be handled by re-checking queryStateRef at the end of write().
                     if (connectionHandler != null && connectionHandler.cancelHandler())
-                        connectionHandler.connection.release();
+                        connectionHandler.connection.release(position);
                     return;
                 } else if (!previous.inProgress && queryStateRef.compareAndSet(previous, QueryState.CANCELLED_WHILE_COMPLETE)) {
                     if (logger.isTraceEnabled())
@@ -522,7 +522,7 @@ class RequestHandler {
             try {
                 switch (response.type) {
                     case RESULT:
-                        connection.release();
+                        connection.release(position);
                         setFinalResult(connection, response);
                         break;
                     case ERROR:
@@ -532,7 +532,7 @@ class RequestHandler {
                         RetryPolicy retryPolicy = retryPolicy();
                         switch (err.code) {
                             case READ_TIMEOUT:
-                                connection.release();
+                                connection.release(position);
                                 assert err.infos instanceof ReadTimeoutException;
                                 ReadTimeoutException rte = (ReadTimeoutException) err.infos;
                                 retry = retryPolicy.onReadTimeout(statement,
@@ -550,7 +550,7 @@ class RequestHandler {
                                 }
                                 break;
                             case WRITE_TIMEOUT:
-                                connection.release();
+                                connection.release(position);
                                 assert err.infos instanceof WriteTimeoutException;
                                 WriteTimeoutException wte = (WriteTimeoutException) err.infos;
                                 if (statement.isIdempotentWithDefault(manager.cluster.getConfiguration().getQueryOptions()))
@@ -572,7 +572,7 @@ class RequestHandler {
                                 }
                                 break;
                             case UNAVAILABLE:
-                                connection.release();
+                                connection.release(position);
                                 assert err.infos instanceof UnavailableException;
                                 UnavailableException ue = (UnavailableException) err.infos;
                                 retry = retryPolicy.onUnavailable(statement,
@@ -589,13 +589,13 @@ class RequestHandler {
                                 }
                                 break;
                             case OVERLOADED:
-                                connection.release();
+                                connection.release(position);
                                 assert exceptionToReport instanceof OverloadedException;
                                 logger.warn("Host {} is overloaded.", connection.address);
                                 retry = computeRetryDecisionOnRequestError((OverloadedException) exceptionToReport);
                                 break;
                             case SERVER_ERROR:
-                                connection.release();
+                                connection.release(position);
                                 assert exceptionToReport instanceof ServerError;
                                 logger.warn("{} replied with server error ({}), defuncting connection.", connection.address, err.message);
                                 // Defunct connection
@@ -603,7 +603,7 @@ class RequestHandler {
                                 retry = computeRetryDecisionOnRequestError((ServerError) exceptionToReport);
                                 break;
                             case IS_BOOTSTRAPPING:
-                                connection.release();
+                                connection.release(position);
                                 assert exceptionToReport instanceof BootstrappingException;
                                 logger.error("Query sent to {} but it is bootstrapping. This shouldn't happen but trying next host.", connection.address);
                                 if (metricsEnabled()) {
@@ -619,7 +619,7 @@ class RequestHandler {
                                 PreparedStatement toPrepare = manager.cluster.manager.preparedQueries.get(id);
                                 if (toPrepare == null) {
                                     // This shouldn't happen
-                                    connection.release();
+                                    connection.release(position);
                                     String msg = String.format("Tried to execute unknown prepared query %s", id);
                                     logger.error(msg);
                                     setFinalException(connection, new DriverInternalError(msg));
@@ -633,7 +633,7 @@ class RequestHandler {
                                     // a prepared statement with the wrong keyspace set.
                                     // Fail fast (we can't change the keyspace to reprepare, because we're using a pooled connection
                                     // that's shared with other requests).
-                                    connection.release();
+                                    connection.release(position);
                                     throw new IllegalStateException(String.format("Statement was prepared on keyspace %s, can't execute it on %s (%s)",
                                             toPrepare.getQueryKeyspace(), connection.keyspace(), toPrepare.getQueryString()));
                                 }
@@ -646,7 +646,7 @@ class RequestHandler {
                                 // we're done for now, the prepareAndRetry callback will handle the rest
                                 return;
                             default:
-                                connection.release();
+                                connection.release(position);
                                 if (metricsEnabled())
                                     metrics().getErrorMetrics().getOthers().inc();
                                 break;
@@ -659,7 +659,7 @@ class RequestHandler {
                         }
                         break;
                     default:
-                        connection.release();
+                        connection.release(position);
                         setFinalResult(connection, response);
                         break;
                 }
@@ -704,7 +704,7 @@ class RequestHandler {
                         return;
                     }
 
-                    connection.release();
+                    connection.release(position);
 
                     switch (response.type) {
                         case RESULT:
@@ -743,7 +743,7 @@ class RequestHandler {
                                 retryCount, queryState, queryStateRef.get());
                         return false;
                     }
-                    connection.release();
+                    connection.release(position);
                     logError(connection.address, new OperationTimedOutException(connection.address, "Timed out waiting for response to PREPARE message"));
                     retry(false, null);
                     return true;
@@ -763,7 +763,7 @@ class RequestHandler {
 
             Host queriedHost = current;
             try {
-                connection.release();
+                connection.release(position);
 
                 if (exception instanceof ConnectionException) {
                     RetryPolicy.RetryDecision decision = computeRetryDecisionOnRequestError((ConnectionException) exception);
@@ -795,7 +795,7 @@ class RequestHandler {
             OperationTimedOutException timeoutException = new OperationTimedOutException(connection.address, "Timed out waiting for server response");
 
             try {
-                connection.release();
+                connection.release(position);
 
                 RetryPolicy.RetryDecision decision = computeRetryDecisionOnRequestError(timeoutException);
                 processRetryDecision(decision, connection, timeoutException);
