@@ -720,7 +720,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
 
             // On returning of the connection, should detect that there are no available streams and trash it.
             assertThat(pool.trash).hasSize(0);
-            pool.returnConnection(extra1, );
+            pool.returnConnection(extra1, 0);
             assertThat(pool.trash).hasSize(1);
         } finally {
             MockRequest.completeAll(allRequests);
@@ -1405,7 +1405,7 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
         }
 
         private MockRequest(HostConnectionPool pool, int timeoutMillis, int maxQueueSize) throws ConnectionException {
-            this.connectionFuture = pool.borrowConnection(timeoutMillis, MILLISECONDS, maxQueueSize);
+            this.connectionFuture = pool.borrowConnection(timeoutMillis, MILLISECONDS, maxQueueSize, 0);
             requestInitialized = Futures.transform(this.connectionFuture, new Function<Connection, Connection.ResponseHandler>() {
                 @Override
                 public Connection.ResponseHandler apply(Connection connection) {
