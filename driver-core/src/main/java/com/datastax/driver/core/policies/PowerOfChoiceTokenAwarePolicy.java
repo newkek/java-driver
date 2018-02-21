@@ -240,8 +240,7 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
                 // Order the first two hosts by increasing load
                 Host host0 = l.get(0);
                 Host host1 = l.get(1);
-//                if (cluster.inFlightNospec(host0) > cluster.inFlightNospec(host1)) {
-                if (cluster.inFlight(host0) > cluster.inFlight(host1)) {
+                if (cluster.inFlightNospec(host0) > cluster.inFlightNospec(host1)) {
                     l.set(0, host1);
                     l.set(1, host0);
                 }
