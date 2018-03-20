@@ -253,7 +253,7 @@ class HostConnectionPool implements Connection.Owner {
 
         int totalInFlightCount = totalInFlight.incrementAndGet();
 
-        if (executionIndex <= 1) {
+        if (executionIndex < 1) {
             totalInFlightNoSpec.incrementAndGet();
         }
 
@@ -309,7 +309,7 @@ class HostConnectionPool implements Connection.Owner {
         connection.inFlight.decrementAndGet();
         totalInFlight.decrementAndGet();
 
-        if (executionIndex <= 1) {
+        if (executionIndex < 1) {
             totalInFlightNoSpec.decrementAndGet();
         }
 
