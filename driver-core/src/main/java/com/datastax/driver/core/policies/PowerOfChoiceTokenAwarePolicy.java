@@ -20,12 +20,14 @@ import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.Host;
 import com.datastax.driver.core.HostDistance;
 import com.datastax.driver.core.Metadata;
+import com.datastax.driver.core.MovingPercentage;
 import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.Statement;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Lists;
+import io.netty.util.internal.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,8 +69,6 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
     private static final int IGNORE_NEW_HOST_PERIOD_MILLIS = Integer.valueOf(System.getProperty("com.datastax.driver.IGNORE_NEW_HOST_PERIOD_MILLIS", "5000"));
     private static final boolean WARMUP_ENABLED = IGNORE_NEW_HOST_PERIOD_MILLIS != 0;
 
-    private final Random ignoreHostRandom = new Random();
-
     static {
         if (POWER_OF_TWO_CHOICES) {
             LOG.info("Activating power of two choices");
@@ -88,6 +88,14 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
     private volatile Metadata clusterMetadata;
     private volatile ProtocolVersion protocolVersion;
     private volatile CodecRegistry codecRegistry;
+
+    private double initialPercentage;
+    private long readingLifeTimeNanos;
+    private double lowToHighThreshold;
+    private double highToLowThreshold;
+    private double slowExclusionRate;
+
+    private final boolean useSpeculativeExecMonitoring;
 
     private final Cache<Host, Long> newHostsEvents = CacheBuilder
         .newBuilder()
@@ -109,6 +117,25 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
     public PowerOfChoiceTokenAwarePolicy(LoadBalancingPolicy childPolicy, boolean shuffleReplicas) {
         this.childPolicy = childPolicy;
         this.shuffleReplicas = shuffleReplicas;
+        this.useSpeculativeExecMonitoring = false;
+    }
+
+    public PowerOfChoiceTokenAwarePolicy(LoadBalancingPolicy childPolicy, boolean shuffleReplicas,
+                                         double initialPercentage,
+                                         long readingLifeTimeNanos,
+                                         double lowToHighThreshold,
+                                         double highToLowThreshold,
+                                         double slowExclusionRate) {
+        this.childPolicy = childPolicy;
+        this.shuffleReplicas = shuffleReplicas;
+
+        this.useSpeculativeExecMonitoring = true;
+
+        this.initialPercentage = initialPercentage;
+        this.readingLifeTimeNanos = readingLifeTimeNanos;
+        this.lowToHighThreshold = lowToHighThreshold;
+        this.highToLowThreshold = highToLowThreshold;
+        this.slowExclusionRate = slowExclusionRate;
     }
 
     /**
@@ -133,6 +160,14 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
         protocolVersion = cluster.getConfiguration().getProtocolOptions().getProtocolVersion();
         codecRegistry = cluster.getConfiguration().getCodecRegistry();
         childPolicy.init(cluster, hosts);
+        if (useSpeculativeExecMonitoring) {
+            for (Host host : hosts) {
+                host.setMovingPercentage(initialPercentage,
+                    readingLifeTimeNanos,
+                    lowToHighThreshold,
+                    highToLowThreshold);
+            }
+        }
     }
 
     /**
@@ -188,17 +223,11 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
                         Long hostTimestamp = newHostsEvents.getIfPresent(host);
                         // should be evicted from the cache if present for more than the desired time
                         if (hostTimestamp != null) {
-
                             // with this, the probability should go from 100% to 30% in IGNORE_NEW_HOST_PERIOD_MILLIS period of time
                             double ignoreProba = 100 - ((System.currentTimeMillis() - hostTimestamp) / (((IGNORE_NEW_HOST_PERIOD_MILLIS / 100) * 2.0) / 3.0));
-
-                            if (LOG.isTraceEnabled()) {
-                                LOG.trace("divi = " + (((IGNORE_NEW_HOST_PERIOD_MILLIS / 100) * 2.0) / 3.0) + " ; ignoreProba = " + ignoreProba);
-                            }
-                            if (ignoreHostRandom.nextDouble() < (ignoreProba / 100.0)) {
+                            if (ThreadLocalRandom.current().nextDouble(0, 1) < (ignoreProba / 100.0)) {
                                 if (LOG.isTraceEnabled()) {
-                                    LOG.trace(String.format("Host [%s] was chosen for query " +
-                                        "but will be put at the end of the query plan as it is still in a warm-up phase", host));
+                                    LOG.trace(String.format("Host [%s] ignored because still in warmup; ignoreProba = %f", host, ignoreProba));
                                 }
                                 ignoredReplicas.add(host);
                                 continue;
@@ -206,8 +235,23 @@ public class PowerOfChoiceTokenAwarePolicy implements ChainableLoadBalancingPoli
                         }
                     }
 
-                    if (host.isUp() && childPolicy.distance(host) == HostDistance.LOCAL)
+                    if (host.isUp() && childPolicy.distance(host) == HostDistance.LOCAL) {
+                        // ignore a host if:
+                        //   - the spec exec monitoring is enabled
+                        //   - the host is detected as Slow
+                        // on a defined interval we want to re-include a slow host so that
+                        // we can detect if the node is not slow anymore.
+                        if (useSpeculativeExecMonitoring
+                                && host.isSlow()
+                                && ThreadLocalRandom.current().nextDouble() > slowExclusionRate) {
+                            if (LOG.isTraceEnabled()) {
+                                LOG.trace(String.format("Host [%s] ignored via spec exec monitoring", host));
+                            }
+                            ignoredReplicas.add(host);
+                            continue;
+                        }
                         return host;
+                    }
                 }
 
                 Iterator<Host> ignoredReplicasIterator = ignoredReplicas.iterator();

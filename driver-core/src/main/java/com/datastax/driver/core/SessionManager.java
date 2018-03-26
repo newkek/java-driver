@@ -129,7 +129,7 @@ class SessionManager extends AbstractSession {
     public ResultSetFuture executeAsync(final Statement statement) {
         if (isInit) {
             DefaultResultSetFuture future = new DefaultResultSetFuture(this, cluster.manager.protocolVersion(), makeRequestMessage(statement, null));
-            new RequestHandler(this, future, statement).sendRequest();
+            new RequestHandler(this, future, statement).sendRequest(true);
             return future;
         } else {
             // If the session is not initialized, we can't call makeRequestMessage() synchronously, because it
@@ -611,12 +611,12 @@ class SessionManager extends AbstractSession {
      */
     void execute(final RequestHandler.Callback callback, final Statement statement) {
         if (isInit)
-            new RequestHandler(this, callback, statement).sendRequest();
+            new RequestHandler(this, callback, statement).sendRequest(true);
         else
             this.initAsync().addListener(new Runnable() {
                 @Override
                 public void run() {
-                    new RequestHandler(SessionManager.this, callback, statement).sendRequest();
+                    new RequestHandler(SessionManager.this, callback, statement).sendRequest(true);
                 }
             }, executor());
     }

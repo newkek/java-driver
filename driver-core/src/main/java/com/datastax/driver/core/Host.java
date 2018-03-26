@@ -78,6 +78,8 @@ public class Host {
     private volatile boolean dseGraphEnabled;
     private volatile VersionNumber dseVersion;
 
+    private volatile MovingPercentage movingPercentage;
+
     // ClusterMetadata keeps one Host object per inet address and we rely on this (more precisely,
     // we rely on the fact that we can use Object equality as a valid equality), so don't use
     // that constructor but ClusterMetadata.getHost instead.
@@ -135,6 +137,30 @@ public class Host {
 
     void setDseGraphEnabled(boolean dseGraphEnabled) {
         this.dseGraphEnabled = dseGraphEnabled;
+    }
+
+    // will be called in PowerOfChoiceTokenAwarePolicy.init()
+    public void setMovingPercentage(double initialPercentage,
+                             long readingLifeTimeNanos,
+                             double lowToHighThreshold,
+                             double highToLowThreshold) {
+        this.movingPercentage = new MovingPercentage(initialPercentage, readingLifeTimeNanos, lowToHighThreshold, highToLowThreshold);
+    }
+
+    public boolean isSlow() {
+        return this.movingPercentage != null && this.movingPercentage.isHigh();
+    }
+
+    public void recordSuccessfullExecution() {
+        if (this.movingPercentage != null) {
+            this.movingPercentage.recordMiss();
+        }
+    }
+
+    public void recordSpeculativeExecution() {
+        if (this.movingPercentage != null) {
+            this.movingPercentage.recordHit();
+        }
     }
 
     boolean supports(ProtocolVersion version) {

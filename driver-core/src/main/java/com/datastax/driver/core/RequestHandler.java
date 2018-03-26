@@ -17,6 +17,7 @@ package com.datastax.driver.core;
 
 import com.codahale.metrics.Timer;
 import com.datastax.driver.core.exceptions.*;
+import com.datastax.driver.core.policies.PowerOfChoiceTokenAwarePolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy.RetryDecision.Type;
 import com.datastax.driver.core.policies.SpeculativeExecutionPolicy.SpeculativeExecutionPlan;
@@ -94,8 +95,8 @@ class RequestHandler {
         this.startTime = System.nanoTime();
     }
 
-    void sendRequest() {
-        startNewExecution();
+    void sendRequest(boolean firstExecution) {
+        startNewExecution(firstExecution);
     }
 
     // Called when the corresponding ResultSetFuture is cancelled by the client
@@ -106,14 +107,14 @@ class RequestHandler {
         cancelPendingExecutions(null);
     }
 
-    private void startNewExecution() {
+    private void startNewExecution(boolean firstExecution) {
         if (isDone.get())
             return;
 
         Message.Request request = callback.request();
         int position = executionIndex.getAndIncrement();
 
-        SpeculativeExecution execution = new SpeculativeExecution(request, position);
+        SpeculativeExecution execution = new SpeculativeExecution(request, position, firstExecution);
         runningExecutions.add(execution);
         execution.findNextHostAndQuery();
     }
@@ -137,7 +138,7 @@ class RequestHandler {
                     public void run() {
                         if (metricsEnabled())
                             metrics().getErrorMetrics().getSpeculativeExecutions().inc();
-                        startNewExecution();
+                        startNewExecution(false);
                     }
                 });
         }
@@ -166,6 +167,8 @@ class RequestHandler {
         try {
             if (timerContext != null)
                 timerContext.stop();
+
+            execution.current.recordSuccessfullExecution();
 
             ExecutionInfo info;
             int speculativeExecutions = executionIndex.get() - 1;
@@ -259,6 +262,7 @@ class RequestHandler {
         private final AtomicReference<QueryState> queryStateRef;
         private final AtomicBoolean nextExecutionScheduled = new AtomicBoolean();
         private final long startTime = System.nanoTime();
+        private final boolean firstExecution;
 
         // This represents the number of times a retry has been triggered by the RetryPolicy (this is different from
         // queryStateRef.get().retryCount, because some retries don't involve the policy, for example after an
@@ -268,11 +272,12 @@ class RequestHandler {
 
         private volatile Connection.ResponseHandler connectionHandler;
 
-        SpeculativeExecution(Message.Request request, int position) {
+        SpeculativeExecution(Message.Request request, int position, boolean firstExecution) {
             this.id = RequestHandler.this.id + "-" + position;
             this.request = request;
             this.position = position;
             this.queryStateRef = new AtomicReference<QueryState>(QueryState.INITIAL);
+            this.firstExecution = firstExecution;
             if (logger.isTraceEnabled())
                 logger.trace("[{}] Starting", id);
         }
@@ -285,6 +290,9 @@ class RequestHandler {
                         metrics().getRegistry()
                                 .counter(MetricsUtil.hostMetricName("LoadBalancingPolicy.hits.", host))
                                 .inc();
+                    }
+                    if (!firstExecution) {
+                        host.recordSpeculativeExecution();
                     }
                     if (query(host))
                         return;
